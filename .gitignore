@@ -1,0 +1,19 @@
+# Models (too large for git)
+models/
+
+# Output recordings
+recordings/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+*.egg-info/
+
+# Environment
+.env
+
+# macOS
+.DS_Store
