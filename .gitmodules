@@ -1,0 +1,3 @@
+[submodule "vendor/LivePortrait"]
+	path = vendor/LivePortrait
+	url = https://github.com/KwaiVGI/LivePortrait

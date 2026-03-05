@@ -19,6 +19,14 @@ DEFAULT_REFERENCE_PATH = os.path.join(REFERENCES_DIR, "influencer.png")
 # Recordings
 RECORDINGS_DIR = os.path.join(ROOT_DIR, "recordings")
 
+# LivePortrait
+LIVEPORTRAIT_DIR = os.path.join(ROOT_DIR, "vendor", "LivePortrait")
+LIVEPORTRAIT_MODELS_DIR = os.path.join(MODELS_DIR, "liveportrait")
+LIVEPORTRAIT_PRETRAINED_WEIGHTS = os.path.join(LIVEPORTRAIT_DIR, "pretrained_weights")
+DRIVING_VIDEOS_DIR = os.path.join(ROOT_DIR, "driving_videos")
+GENERATE_OUTPUT_DIR = os.path.join(ROOT_DIR, "generated")
+LIVEPORTRAIT_DEVICE = "mps"
+
 # ONNX Runtime execution providers (CoreML for M1 GPU acceleration)
 EXECUTION_PROVIDERS = ["CoreMLExecutionProvider", "CPUExecutionProvider"]
 

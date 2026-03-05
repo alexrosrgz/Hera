@@ -89,8 +89,9 @@ class VideoRecorder:
                 while self._recording:
                     data, _ = stream.read(1024)
                     self._audio_data.append(data.copy())
-        except Exception:
-            pass  # Audio capture is optional
+        except Exception as e:
+            import logging
+            logging.getLogger("hera.recorder").warning(f"Audio capture failed: {e}")
 
     def _mux_audio_video(self):
         """Mux video and audio using FFmpeg."""

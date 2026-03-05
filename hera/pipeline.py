@@ -1,3 +1,5 @@
+import logging
+import os
 import threading
 import time
 from queue import Queue, Empty
@@ -6,6 +8,8 @@ import cv2
 import numpy as np
 
 from hera import config
+
+logger = logging.getLogger("hera.pipeline")
 from hera.capture import CameraCapture
 from hera.face_analyser import FaceAnalyser
 from hera.processors.face_swapper import FaceSwapper
@@ -27,11 +31,19 @@ class Pipeline:
         self._running = False
         self._threads = []
         self._fps = 0.0
-        self._recording = False
-        self._recorder = None
+        self._error = None
 
     def load_models(self, progress_callback=None):
         """Load all ML models. Call before start()."""
+        if not os.path.exists(config.SWAPPER_MODEL_PATH):
+            raise FileNotFoundError(
+                f"Model not found: {config.SWAPPER_MODEL_PATH}\nRun: python setup_models.py"
+            )
+        if not os.path.exists(config.ENHANCER_MODEL_PATH):
+            raise FileNotFoundError(
+                f"Model not found: {config.ENHANCER_MODEL_PATH}\nRun: python setup_models.py"
+            )
+
         if progress_callback:
             progress_callback("Loading face analyser...")
         self.face_analyser = FaceAnalyser()
@@ -87,72 +99,90 @@ class Pipeline:
         return self._fps
 
     def _capture_loop(self):
-        while self._running:
-            frame = self.camera.read()
-            if frame is None:
-                continue
-            # Drop stale frames
-            if self._capture_queue.full():
-                try:
-                    self._capture_queue.get_nowait()
-                except Empty:
-                    pass
-            self._capture_queue.put((time.time(), frame))
+        try:
+            while self._running:
+                frame = self.camera.read()
+                if frame is None:
+                    continue
+                # Drop stale frames
+                if self._capture_queue.full():
+                    try:
+                        self._capture_queue.get_nowait()
+                    except Empty:
+                        pass
+                self._capture_queue.put((time.time(), frame))
+        except Exception as e:
+            logger.error(f"Capture loop crashed: {e}")
+            self._error = str(e)
 
     def _swap_loop(self):
         fps_timer = time.time()
         frame_count = 0
 
-        while self._running:
-            try:
-                timestamp, frame = self._capture_queue.get(timeout=0.1)
-            except Empty:
-                continue
-
-            # Drop stale frames (older than 100ms)
-            if time.time() - timestamp > 0.1:
-                continue
-
-            if self.source_face is not None:
-                target_face = self.face_analyser.get_one_face(frame)
-                if target_face is not None:
-                    frame = self.face_swapper.swap_face(frame, self.source_face, target_face)
-
-            # Track FPS
-            frame_count += 1
-            elapsed = time.time() - fps_timer
-            if elapsed >= 1.0:
-                self._fps = frame_count / elapsed
-                frame_count = 0
-                fps_timer = time.time()
-
-            # Drop stale in swap queue
-            if self._swap_queue.full():
+        try:
+            while self._running:
                 try:
-                    self._swap_queue.get_nowait()
+                    timestamp, frame = self._capture_queue.get(timeout=0.1)
                 except Empty:
-                    pass
-            self._swap_queue.put((time.time(), frame))
+                    continue
+
+                # Drop stale frames (older than 100ms)
+                if time.time() - timestamp > 0.1:
+                    continue
+
+                if self.source_face is not None:
+                    target_face = self.face_analyser.get_one_face(frame)
+                    if target_face is not None:
+                        try:
+                            frame = self.face_swapper.swap_face(frame, self.source_face, target_face)
+                        except Exception as e:
+                            logger.warning(f"Swap failed: {e}")
+
+                # Track FPS
+                frame_count += 1
+                elapsed = time.time() - fps_timer
+                if elapsed >= 1.0:
+                    self._fps = frame_count / elapsed
+                    frame_count = 0
+                    fps_timer = time.time()
+
+                # Drop stale in swap queue
+                if self._swap_queue.full():
+                    try:
+                        self._swap_queue.get_nowait()
+                    except Empty:
+                        pass
+                self._swap_queue.put((time.time(), frame))
+        except Exception as e:
+            logger.error(f"Swap loop crashed: {e}")
+            self._error = str(e)
 
     def _enhance_loop(self):
-        while self._running:
-            try:
-                timestamp, frame = self._swap_queue.get(timeout=0.1)
-            except Empty:
-                continue
-
-            if time.time() - timestamp > 0.1:
-                continue
-
-            if config.ENHANCE_ENABLED and self.source_face is not None:
-                target_face = self.face_analyser.get_one_face(frame, use_cache=True)
-                if target_face is not None:
-                    frame = self.face_enhancer.enhance_face(frame, target_face.bbox)
-
-            # Drop stale in output queue
-            if self._output_queue.full():
+        try:
+            while self._running:
                 try:
-                    self._output_queue.get_nowait()
+                    timestamp, frame = self._swap_queue.get(timeout=0.1)
                 except Empty:
-                    pass
-            self._output_queue.put(frame)
+                    continue
+
+                if time.time() - timestamp > 0.1:
+                    continue
+
+                if config.ENHANCE_ENABLED and self.source_face is not None:
+                    target_face = self.face_analyser.get_one_face(frame, use_cache=True)
+                    if target_face is not None:
+                        try:
+                            frame = self.face_enhancer.enhance_face(frame, target_face.bbox)
+                        except Exception as e:
+                            logger.warning(f"Enhance failed: {e}")
+
+                # Drop stale in output queue
+                if self._output_queue.full():
+                    try:
+                        self._output_queue.get_nowait()
+                    except Empty:
+                        pass
+                self._output_queue.put(frame)
+        except Exception as e:
+            logger.error(f"Enhance loop crashed: {e}")
+            self._error = str(e)

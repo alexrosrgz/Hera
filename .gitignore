@@ -4,6 +4,15 @@ models/
 # Output recordings
 recordings/
 
+# Generated videos
+generated/
+
+# Driving videos
+driving_videos/
+
+# Vendor contents (but not the submodule reference itself)
+vendor/*/pretrained_weights/
+
 # Python
 __pycache__/
 *.pyc
